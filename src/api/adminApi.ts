@@ -1,14 +1,19 @@
 // 이 파일은 관리자 대시보드가 필요로 하는 API 호출을 한 곳에 모아둔 서비스 레이어입니다.
 //
-// ⚠️ 아래 엔드포인트 경로(/api/admin/...)는 아직 백엔드에 존재하지 않을 수 있는
-// "가정된" 경로입니다. 실제 명세가 정해지면 이 파일만 고치면 되도록
-// 화면 컴포넌트에서는 이 파일의 함수만 호출하게 되어 있어요.
+// - /api/locations 처럼 실제 백엔드(Spring Boot, api.nowhere-app.cloud)에 이미 구현된
+//   엔드포인트는 apiClient로 호출해요.
+// - /api/admin/... 처럼 실제 백엔드에는 아직 없는 "관리자 전용" 엔드포인트는 localApiClient로
+//   호출해요. 이건 실제 백엔드가 아니라 이 admin-web 레포 안의 /api 폴더에 있는 Vercel
+//   Serverless Functions예요 (실제 백엔드 레포는 전혀 건드리지 않아요). 배포하면 같은
+//   도메인에서 자동으로 떠요. 나중에 실제 백엔드팀이 이 엔드포인트들을 정식으로 만들면,
+//   localApiClient를 apiClient로 바꿔주기만 하면 돼요.
 //
-// 아직 백엔드 엔드포인트가 준비되지 않았거나 호출이 실패하면 mockData.ts의
-// 샘플 데이터로 자동 대체되어, 화면 작업은 백엔드와 상관없이 계속 진행할 수 있습니다.
-// (콘솔에 [adminApi] ... mock 데이터로 대체 로그가 남습니다.)
+// 로컬 `npm run dev`(순수 Vite)에서는 Serverless Functions가 안 떠 있어서 localApiClient
+// 호출이 실패하는데, 그러면 아래 mock 데이터로 자동 대체돼요. 로컬에서도 실제로 함수가
+// 응답하는 걸 보고 싶으면 `vercel dev`로 실행하세요.
+// (콘솔에 [adminApi] ... mock 데이터로 대체 로그가 남으면 이 경로예요.)
 
-import { apiClient, setStoredToken, clearStoredToken } from './client'
+import { apiClient, localApiClient, setStoredToken, clearStoredToken } from './client'
 import { demoAdminCredentials } from './config'
 import type {
   DashboardSummary,
@@ -17,6 +22,7 @@ import type {
   LocationProposal,
   RecentReport,
   LoginResponse,
+  CongestionLevel,
 } from '../types'
 import {
   mockSummary,
@@ -25,19 +31,73 @@ import {
   mockProposals,
   mockRecentReports,
 } from './mockData'
+import { markMocked, markReal } from './mockStatus'
+
+// ---- /api/locations 실제 응답 어댑터 -----------------------------------
+// 실제 백엔드 응답은 화면이 기대하는 모양과 달라요 (예: level이 아니라
+// congestionLevel, occupancyPercent/updatedAgoMinutes 필드 자체가 없음,
+// 아직 제보가 없는 장소는 congestionLevel이 null). 여기서 안전하게 변환합니다.
+interface RawLocation {
+  id: number | string
+  name: string
+  category: string
+  congestionLevel: string | null
+  congestionUpdatedAt: string | null
+}
+
+const KNOWN_LEVELS: CongestionLevel[] = ['RELAXED', 'NORMAL', 'CROWDED']
+
+// 백엔드 카테고리 코드 -> 화면 표시용 한글 라벨. 여기 없는 값은 원본 그대로 보여줘요.
+const CATEGORY_LABELS: Record<string, string> = {
+  SCHOOL: '학교 시설',
+}
+
+// 백엔드가 아직 정밀 점유율(%)을 내려주지 않아서, 혼잡도 단계 기준으로 대략적인
+// 값을 보여줘요. (정확한 수치가 아니라 화면 표시용 추정치입니다.)
+const LEVEL_OCCUPANCY_ESTIMATE: Record<CongestionLevel, number> = {
+  RELAXED: 20,
+  NORMAL: 55,
+  CROWDED: 85,
+  UNKNOWN: 0,
+}
+
+function toLocationStatus(raw: RawLocation): LocationStatus {
+  const level: CongestionLevel =
+    raw.congestionLevel && KNOWN_LEVELS.includes(raw.congestionLevel as CongestionLevel)
+      ? (raw.congestionLevel as CongestionLevel)
+      : 'UNKNOWN'
+
+  // congestionUpdatedAt이 없으면(아직 업데이트 이력 없음) -1을 넣어서
+  // 화면에서 "업데이트 기록 없음"으로 구분해서 보여줘요.
+  const updatedAgoMinutes = raw.congestionUpdatedAt
+    ? Math.max(0, Math.round((Date.now() - new Date(raw.congestionUpdatedAt).getTime()) / 60000))
+    : -1
+
+  return {
+    id: String(raw.id),
+    name: raw.name,
+    category: CATEGORY_LABELS[raw.category] ?? raw.category,
+    level,
+    occupancyPercent: LEVEL_OCCUPANCY_ESTIMATE[level],
+    updatedAgoMinutes,
+  }
+}
 
 async function withMockFallback<T>(label: string, real: () => Promise<T>, mock: T): Promise<T> {
   try {
-    return await real()
+    const result = await real()
+    markReal(label)
+    return result
   } catch (err) {
     console.warn(`[adminApi] ${label} 호출 실패 — mock 데이터로 대체합니다.`, err)
+    markMocked(label)
     return mock
   }
 }
 
 export async function login(email: string, password: string): Promise<LoginResponse> {
   try {
-    const { data } = await apiClient.post<LoginResponse>('/api/admin/auth/login', { email, password })
+    const { data } = await localApiClient.post<LoginResponse>('/api/admin/auth/login', { email, password })
     setStoredToken(data.token)
     return data
   } catch (err) {
@@ -59,21 +119,21 @@ export function logout() {
 
 export function getSummary(): Promise<DashboardSummary> {
   return withMockFallback('GET /api/admin/stats/summary', async () => {
-    const { data } = await apiClient.get<DashboardSummary>('/api/admin/stats/summary')
+    const { data } = await localApiClient.get<DashboardSummary>('/api/admin/stats/summary')
     return data
   }, mockSummary)
 }
 
 export function getLocationStatuses(): Promise<LocationStatus[]> {
   return withMockFallback('GET /api/locations', async () => {
-    const { data } = await apiClient.get<LocationStatus[]>('/api/locations')
-    return data
+    const { data } = await apiClient.get<RawLocation[]>('/api/locations')
+    return data.map(toLocationStatus)
   }, mockLocations)
 }
 
 export function getHourlyTrend(locationId?: string): Promise<HourlyTrendPoint[]> {
   return withMockFallback('GET /api/admin/stats/hourly', async () => {
-    const { data } = await apiClient.get<HourlyTrendPoint[]>('/api/admin/stats/hourly', {
+    const { data } = await localApiClient.get<HourlyTrendPoint[]>('/api/admin/stats/hourly', {
       params: locationId ? { locationId } : undefined,
     })
     return data
@@ -82,7 +142,7 @@ export function getHourlyTrend(locationId?: string): Promise<HourlyTrendPoint[]>
 
 export function getPendingProposals(): Promise<LocationProposal[]> {
   return withMockFallback('GET /api/admin/proposals?status=pending', async () => {
-    const { data } = await apiClient.get<LocationProposal[]>('/api/admin/proposals', {
+    const { data } = await localApiClient.get<LocationProposal[]>('/api/admin/proposals', {
       params: { status: 'pending' },
     })
     return data
@@ -90,16 +150,16 @@ export function getPendingProposals(): Promise<LocationProposal[]> {
 }
 
 export async function approveProposal(id: string): Promise<void> {
-  await apiClient.post(`/api/admin/proposals/${id}/approve`)
+  await localApiClient.post(`/api/admin/proposals/${id}/approve`)
 }
 
 export async function rejectProposal(id: string): Promise<void> {
-  await apiClient.post(`/api/admin/proposals/${id}/reject`)
+  await localApiClient.post(`/api/admin/proposals/${id}/reject`)
 }
 
 export function getRecentReports(): Promise<RecentReport[]> {
   return withMockFallback('GET /api/admin/reports/recent', async () => {
-    const { data } = await apiClient.get<RecentReport[]>('/api/admin/reports/recent', {
+    const { data } = await localApiClient.get<RecentReport[]>('/api/admin/reports/recent', {
       params: { limit: 20 },
     })
     return data

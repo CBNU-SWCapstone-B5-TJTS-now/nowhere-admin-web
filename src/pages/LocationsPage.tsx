@@ -8,6 +8,7 @@ const levelMeta: Record<CongestionLevel, { text: string; bg: string; label: stri
   CROWDED: { text: 'text-red-600', bg: 'bg-red-50', label: '혼잡' },
   NORMAL: { text: 'text-amber-600', bg: 'bg-amber-50', label: '보통' },
   RELAXED: { text: 'text-green-600', bg: 'bg-green-50', label: '여유' },
+  UNKNOWN: { text: 'text-slate-400', bg: 'bg-slate-100', label: '정보없음' },
 }
 
 export function LocationsPage() {
@@ -172,8 +173,12 @@ export function LocationsPage() {
                         {meta.label}
                       </span>
                     </td>
-                    <td className="py-2.5 px-1.5 text-[12.5px] text-slate-500">{l.occupancyPercent}%</td>
-                    <td className="py-2.5 px-1.5 text-[12.5px] text-slate-500">{l.updatedAgoMinutes}분 전</td>
+                    <td className="py-2.5 px-1.5 text-[12.5px] text-slate-500">
+                      {l.level === 'UNKNOWN' ? '-' : `${l.occupancyPercent}%`}
+                    </td>
+                    <td className="py-2.5 px-1.5 text-[12.5px] text-slate-500">
+                      {l.updatedAgoMinutes >= 0 ? `${l.updatedAgoMinutes}분 전` : '기록 없음'}
+                    </td>
                     <td className="py-2.5 px-1.5 text-right">
                       <button
                         onClick={() => handleDelete(l.id)}

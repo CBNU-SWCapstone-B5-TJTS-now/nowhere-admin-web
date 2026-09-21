@@ -1,4 +1,4 @@
-export type CongestionLevel = 'RELAXED' | 'NORMAL' | 'CROWDED'
+export type CongestionLevel = 'RELAXED' | 'NORMAL' | 'CROWDED' | 'UNKNOWN'
 
 export interface AdminUser {
   name: string

@@ -4,6 +4,7 @@ const levelMeta: Record<CongestionLevel, { dot: string; bar: string; barBg: stri
   CROWDED: { dot: 'bg-red-600', bar: 'bg-red-600', barBg: 'bg-red-200', text: 'text-red-600', rowBg: 'bg-red-50', label: '혼잡' },
   NORMAL: { dot: 'bg-amber-600', bar: 'bg-amber-600', barBg: 'bg-amber-200', text: 'text-amber-600', rowBg: '', label: '보통' },
   RELAXED: { dot: 'bg-green-600', bar: 'bg-green-600', barBg: 'bg-green-200', text: 'text-green-600', rowBg: '', label: '여유' },
+  UNKNOWN: { dot: 'bg-slate-300', bar: 'bg-slate-300', barBg: 'bg-slate-100', text: 'text-slate-400', rowBg: '', label: '정보없음' },
 }
 
 export function CongestionList({ locations }: { locations: LocationStatus[] }) {
@@ -23,14 +24,15 @@ export function CongestionList({ locations }: { locations: LocationStatus[] }) {
               <div className="flex flex-col flex-1 min-w-0">
                 <span className="text-[13.5px] font-semibold text-slate-900 truncate">{loc.name}</span>
                 <span className="text-[11.5px] text-slate-400">
-                  {loc.category} · {loc.updatedAgoMinutes}분 전 업데이트
+                  {loc.category} ·{' '}
+                  {loc.updatedAgoMinutes >= 0 ? `${loc.updatedAgoMinutes}분 전 업데이트` : '업데이트 기록 없음'}
                 </span>
               </div>
               <div className={`w-32 h-1.5 rounded-full shrink-0 ${meta.barBg}`}>
                 <div className={`h-1.5 rounded-full ${meta.bar}`} style={{ width: `${loc.occupancyPercent}%` }} />
               </div>
-              <span className={`text-[12.5px] font-bold w-16 text-right ${meta.text}`}>
-                {meta.label} {loc.occupancyPercent}%
+              <span className={`text-[12.5px] font-bold w-20 text-right ${meta.text}`}>
+                {loc.level === 'UNKNOWN' ? '데이터 없음' : `${meta.label} ${loc.occupancyPercent}%`}
               </span>
             </div>
           )

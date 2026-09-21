@@ -5,6 +5,7 @@ const levelBadge: Record<CongestionLevel, { bg: string; text: string; label: str
   CROWDED: { bg: 'bg-red-50', text: 'text-red-600', label: '혼잡' },
   NORMAL: { bg: 'bg-amber-50', text: 'text-amber-600', label: '보통' },
   RELAXED: { bg: 'bg-green-50', text: 'text-green-600', label: '여유' },
+  UNKNOWN: { bg: 'bg-slate-100', text: 'text-slate-400', label: '정보없음' },
 }
 
 function toCsv(reports: RecentReport[]): string {
