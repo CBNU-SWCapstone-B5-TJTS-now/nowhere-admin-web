@@ -25,7 +25,6 @@ import type {
   CongestionLevel,
 } from '../types'
 import {
-  mockSummary,
   mockLocations,
   mockHourlyTrend,
   mockProposals,
@@ -83,7 +82,8 @@ function toLocationStatus(raw: RawLocation): LocationStatus {
   }
 }
 
-async function withMockFallback<T>(label: string, real: () => Promise<T>, mock: T): Promise<T> {
+// 실제 백엔드(Spring Boot) 호출용. 성공하면 "실제 연동됨"으로, 실패하면 mock으로 표시해요.
+async function withRealBackend<T>(label: string, real: () => Promise<T>, mock: T): Promise<T> {
   try {
     const result = await real()
     markReal(label)
@@ -91,6 +91,19 @@ async function withMockFallback<T>(label: string, real: () => Promise<T>, mock: 
   } catch (err) {
     console.warn(`[adminApi] ${label} 호출 실패 — mock 데이터로 대체합니다.`, err)
     markMocked(label)
+    return mock
+  }
+}
+
+// 이 admin-web 레포 자체의 Vercel Serverless Functions(/api/admin/...) 호출용.
+// 이건 실제 스프링 백엔드가 아니라서 응답이 성공하더라도 항상 "예시 데이터"로 표시해요.
+// 그 함수 자체가 떠 있지 않은 로컬 `npm run dev` 환경 등에서는 정적 mock으로 한 번 더 대체돼요.
+async function withLocalMock<T>(label: string, real: () => Promise<T>, mock: T): Promise<T> {
+  markMocked(label)
+  try {
+    return await real()
+  } catch (err) {
+    console.warn(`[adminApi] ${label} 호출 실패 — 정적 mock 데이터로 대체합니다.`, err)
     return mock
   }
 }
@@ -117,22 +130,32 @@ export function logout() {
   clearStoredToken()
 }
 
-export function getSummary(): Promise<DashboardSummary> {
-  return withMockFallback('GET /api/admin/stats/summary', async () => {
-    const { data } = await localApiClient.get<DashboardSummary>('/api/admin/stats/summary')
-    return data
-  }, mockSummary)
+// 대시보드 요약 통계는 더 이상 별도 API를 부르지 않고, 실제 백엔드 데이터(장소 목록)와
+// 아직 로컬 mock인 항목들(제안/제보)을 조합해서 만들어요. 그래서 "전체 등록 장소"/"실시간
+// 혼잡 장소"는 실제 서버 값과 항상 같아요.
+export async function getSummary(): Promise<DashboardSummary> {
+  const [locations, proposals, reports] = await Promise.all([
+    getLocationStatuses(),
+    getPendingProposals(),
+    getRecentReports(),
+  ])
+  return {
+    totalLocations: locations.length,
+    crowdedLocations: locations.filter((l) => l.level === 'CROWDED').length,
+    reportsToday: reports.length,
+    pendingProposals: proposals.length,
+  }
 }
 
 export function getLocationStatuses(): Promise<LocationStatus[]> {
-  return withMockFallback('GET /api/locations', async () => {
+  return withRealBackend('GET /api/locations', async () => {
     const { data } = await apiClient.get<RawLocation[]>('/api/locations')
     return data.map(toLocationStatus)
   }, mockLocations)
 }
 
 export function getHourlyTrend(locationId?: string): Promise<HourlyTrendPoint[]> {
-  return withMockFallback('GET /api/admin/stats/hourly', async () => {
+  return withLocalMock('GET /api/admin/stats/hourly', async () => {
     const { data } = await localApiClient.get<HourlyTrendPoint[]>('/api/admin/stats/hourly', {
       params: locationId ? { locationId } : undefined,
     })
@@ -140,8 +163,10 @@ export function getHourlyTrend(locationId?: string): Promise<HourlyTrendPoint[]>
   }, mockHourlyTrend)
 }
 
+// ⚠️ 장소 제안(새 장소 등록 요청) 승인/반려는 요청에 따라 아직 실제 백엔드와 연결하지
+// 않고, 이 admin-web 레포 자체의 mock 서버(Vercel Serverless Functions)를 그대로 써요.
 export function getPendingProposals(): Promise<LocationProposal[]> {
-  return withMockFallback('GET /api/admin/proposals?status=pending', async () => {
+  return withLocalMock('GET /api/admin/proposals?status=pending', async () => {
     const { data } = await localApiClient.get<LocationProposal[]>('/api/admin/proposals', {
       params: { status: 'pending' },
     })
@@ -158,7 +183,7 @@ export async function rejectProposal(id: string): Promise<void> {
 }
 
 export function getRecentReports(): Promise<RecentReport[]> {
-  return withMockFallback('GET /api/admin/reports/recent', async () => {
+  return withLocalMock('GET /api/admin/reports/recent', async () => {
     const { data } = await localApiClient.get<RecentReport[]>('/api/admin/reports/recent', {
       params: { limit: 20 },
     })

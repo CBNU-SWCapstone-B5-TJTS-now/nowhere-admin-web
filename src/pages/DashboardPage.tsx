@@ -55,6 +55,7 @@ export function DashboardPage() {
   }
 
   const busiestLocation = [...locations].sort((a, b) => b.occupancyPercent - a.occupancyPercent)[0]
+  const crowdedNames = locations.filter((l) => l.level === 'CROWDED').map((l) => l.name)
 
   return (
     <AppShell
@@ -66,7 +67,7 @@ export function DashboardPage() {
         <div className="flex items-center justify-center py-24 text-slate-400 text-sm">불러오는 중...</div>
       ) : (
         <>
-          <KpiRow summary={summary} />
+          <KpiRow summary={summary} crowdedNames={crowdedNames} />
 
           <div className="grid grid-cols-[1.55fr_1fr] gap-5 items-stretch">
             <CongestionList locations={locations} />
