@@ -10,32 +10,12 @@
 // (src/api/adminApi.ts의 getRecentReports 참고). 시간대별 추이는 백엔드에 이력 조회
 // 엔드포인트가 없어서 정확하게 만들 수 없으므로 화면에서 아예 제거했어요.
 
-export const proposals = [
-  {
-    id: 'p1',
-    placeName: '인문대 옥상 정원',
-    category: '휴게공간',
-    proposedBy: '익명의 다람쥐',
-    proposedAgo: '3시간 전',
-    status: 'pending',
-  },
-  {
-    id: 'p2',
-    placeName: '농생대 온실 앞 벤치',
-    category: '휴게공간',
-    proposedBy: '새싹지킴이',
-    proposedAgo: '어제',
-    status: 'pending',
-  },
-  {
-    id: 'p3',
-    placeName: '예술대 연습실 복도',
-    category: '학습공간',
-    proposedBy: '피아노건반',
-    proposedAgo: '2일 전',
-    status: 'pending',
-  },
-]
+// 예전엔 여기 p1/p2/p3라는 가짜 데모 제안이 하드코딩되어 있었는데, 장소 제안 기능이
+// 실제 모바일 앱 -> 이 서버리스 함수로 연동된 뒤로는 필요 없어서 지웠습니다.
+// (주의: 이 배열은 서버리스 함수가 콜드스타트될 때마다 다시 이 초기값(빈 배열)으로
+// 리셋됩니다. 그래서 실제로 들어온 제안도 콜드스타트 타이밍에 따라 사라질 수 있어요 —
+// 완전히 고치려면 Vercel KV 같은 영구 저장소가 필요합니다.)
+export const proposals = []
 
 export function getPendingProposals() {
   return proposals.filter((p) => p.status === 'pending')
