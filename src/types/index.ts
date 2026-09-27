@@ -37,6 +37,11 @@ export interface LocationProposal {
   category: string
   proposedBy: string
   proposedAgo: string
+  // 모바일 앱에서 실제로 전송된 제안에만 존재하는 값들 (데모용 고정 데이터에는 없음)
+  description?: string
+  latitude?: number | null
+  longitude?: number | null
+  createdAt?: string
 }
 
 export interface RecentReport {

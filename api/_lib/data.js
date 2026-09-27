@@ -58,6 +58,41 @@ export function getPendingProposals() {
   return proposals.filter((p) => p.status === 'pending')
 }
 
+// 상대 시간 문자열("n분 전" 등)을 만들어줘요. createdAt이 없는 옛날 데모 데이터는
+// 이미 가지고 있는 고정 문자열(proposedAgo)을 그대로 써요.
+export function formatProposedAgo(createdAtIso) {
+  const createdAt = new Date(createdAtIso).getTime()
+  const diffMinutes = Math.max(0, Math.round((Date.now() - createdAt) / 60000))
+  if (diffMinutes < 1) return '방금 전'
+  if (diffMinutes < 60) return `${diffMinutes}분 전`
+  const diffHours = Math.round(diffMinutes / 60)
+  if (diffHours < 24) return `${diffHours}시간 전`
+  const diffDays = Math.round(diffHours / 24)
+  return `${diffDays}일 전`
+}
+
+// 모바일 앱(장소 제안하기)에서 들어온 새 제안을 목록에 추가해요.
+// 주의: 서버리스 함수는 인스턴스가 재시작(콜드스타트)되면 메모리가 초기화돼서
+// 이 배열도 같이 리셋돼요. 데모/발표용으로는 충분하지만, 실 서비스라면
+// 백엔드팀이 DB 기반으로 정식 구현해야 해요.
+export function addProposal({ placeName, category, description, latitude, longitude, proposedBy }) {
+  const createdAt = new Date().toISOString()
+  const proposal = {
+    id: `p_${Date.now()}_${Math.round(Math.random() * 1000)}`,
+    placeName,
+    category,
+    description: description || '',
+    latitude: typeof latitude === 'number' ? latitude : null,
+    longitude: typeof longitude === 'number' ? longitude : null,
+    proposedBy: proposedBy || '익명',
+    proposedAgo: '방금 전',
+    createdAt,
+    status: 'pending',
+  }
+  proposals.unshift(proposal)
+  return proposal
+}
+
 export function setProposalStatus(id, status) {
   const target = proposals.find((p) => p.id === id)
   if (!target) return false
