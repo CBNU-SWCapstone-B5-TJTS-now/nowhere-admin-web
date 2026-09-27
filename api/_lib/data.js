@@ -1,28 +1,52 @@
-// 실제 백엔드(Spring Boot)에 아직 없는 "관리자 전용" API들을 위한 데모용 데이터예요.
-// Vercel Serverless Function은 요청마다(또는 콜드스타트마다) 새 인스턴스로 뜰 수 있어서
-// 여기 값은 100% 영구 저장되지 않아요 — 데모/발표용으로는 충분하지만, 실제 서비스에서는
-// 백엔드팀이 DB(PostgreSQL 등) 기반으로 정식 구현해야 합니다.
+// 실제 백엔드(Spring Boot)에 아직 없는 "관리자 전용" API들을 위한 데이터 계층이에요.
 // 주의: 이 파일은 nowhere-admin-web 레포 안에서만 쓰이고, 실제 백엔드 레포와는 무관해요.
 // (프로젝트 package.json이 "type": "module"이라 이 폴더 전체를 ESM으로 작성해요.)
 //
-// "최근 제보 내역"과 "시간대별 추이"는 더 이상 이 파일의 고정 mock 데이터를 쓰지 않아요.
-// 최근 제보 내역은 실제 백엔드의 /api/locations 스냅샷에서 바로 계산합니다
-// (src/api/adminApi.ts의 getRecentReports 참고). 시간대별 추이는 백엔드에 이력 조회
-// 엔드포인트가 없어서 정확하게 만들 수 없으므로 화면에서 아예 제거했어요.
+// "최근 제보 내역"과 "시간대별 추이"는 이 파일의 데이터를 쓰지 않아요. 최근 제보 내역은
+// 실제 백엔드의 /api/locations 스냅샷에서 바로 계산합니다(src/api/adminApi.ts의
+// getRecentReports 참고). 시간대별 추이는 백엔드에 이력 조회 엔드포인트가 없어서
+// 정확하게 만들 수 없으므로 화면에서 아예 제거했어요.
+//
+// [2026-09-27] 장소 제안 목록은 예전엔 이 파일의 인메모리 배열(export const proposals = [])에
+// 저장했었는데, Vercel Serverless Function은 요청마다(또는 콜드스타트마다) 완전히 다른
+// 인스턴스에서 뜰 수 있어서 그 배열이 요청 간에 공유가 안 됐어요. 그래서 모바일 앱에서
+// 보낸 제안이 관리자 페이지 조회에서는 거의 항상 안 보이는 문제가 있었습니다(실사용
+// 중 확인됨). 이제는 Vercel Storage로 연결한 Upstash Redis에 저장해서, 어느 인스턴스가
+// 요청을 처리하든 항상 같은 곳을 읽고 쓰도록 고쳤어요.
 
-// 예전엔 여기 p1/p2/p3라는 가짜 데모 제안이 하드코딩되어 있었는데, 장소 제안 기능이
-// 실제 모바일 앱 -> 이 서버리스 함수로 연동된 뒤로는 필요 없어서 지웠습니다.
-// (주의: 이 배열은 서버리스 함수가 콜드스타트될 때마다 다시 이 초기값(빈 배열)으로
-// 리셋됩니다. 그래서 실제로 들어온 제안도 콜드스타트 타이밍에 따라 사라질 수 있어요 —
-// 완전히 고치려면 Vercel KV 같은 영구 저장소가 필요합니다.)
-export const proposals = []
+import { Redis } from '@upstash/redis'
 
-export function getPendingProposals() {
-  return proposals.filter((p) => p.status === 'pending')
+// Vercel의 "Storage" 탭에서 Upstash Redis를 프로젝트에 연결하면 KV_REST_API_URL /
+// KV_REST_API_TOKEN 환경변수가 자동으로 추가돼요(2026-09-27 확인).
+const redis = new Redis({
+  url: process.env.KV_REST_API_URL,
+  token: process.env.KV_REST_API_TOKEN,
+})
+
+// 제안 목록 전체를 이 하나의 키에 JSON 배열로 저장해요. 양이 아주 많지 않은
+// 데이터라(제안 몇 십~몇 백 건) 굳이 여러 키로 쪼개지 않고 단순하게 갑니다.
+const PROPOSALS_KEY = 'nowhere:proposals'
+
+async function readProposals() {
+  const data = await redis.get(PROPOSALS_KEY)
+  return Array.isArray(data) ? data : []
 }
 
-// 상대 시간 문자열("n분 전" 등)을 만들어줘요. createdAt이 없는 옛날 데모 데이터는
-// 이미 가지고 있는 고정 문자열(proposedAgo)을 그대로 써요.
+async function writeProposals(list) {
+  await redis.set(PROPOSALS_KEY, list)
+}
+
+export async function getAllProposals() {
+  return readProposals()
+}
+
+export async function getPendingProposals() {
+  const list = await readProposals()
+  return list.filter((p) => p.status === 'pending')
+}
+
+// 상대 시간 문자열("n분 전" 등)을 만들어줘요. Redis 접근이 필요 없는 순수 함수라
+// 그대로 동기 함수예요.
 export function formatProposedAgo(createdAtIso) {
   const createdAt = new Date(createdAtIso).getTime()
   const diffMinutes = Math.max(0, Math.round((Date.now() - createdAt) / 60000))
@@ -34,11 +58,8 @@ export function formatProposedAgo(createdAtIso) {
   return `${diffDays}일 전`
 }
 
-// 모바일 앱(장소 제안하기)에서 들어온 새 제안을 목록에 추가해요.
-// 주의: 서버리스 함수는 인스턴스가 재시작(콜드스타트)되면 메모리가 초기화돼서
-// 이 배열도 같이 리셋돼요. 데모/발표용으로는 충분하지만, 실 서비스라면
-// 백엔드팀이 DB 기반으로 정식 구현해야 해요.
-export function addProposal({ placeName, category, description, latitude, longitude, proposedBy }) {
+// 모바일 앱(장소 제안하기)에서 들어온 새 제안을 Redis에 추가해요.
+export async function addProposal({ placeName, category, description, latitude, longitude, proposedBy }) {
   const createdAt = new Date().toISOString()
   const proposal = {
     id: `p_${Date.now()}_${Math.round(Math.random() * 1000)}`,
@@ -52,14 +73,18 @@ export function addProposal({ placeName, category, description, latitude, longit
     createdAt,
     status: 'pending',
   }
-  proposals.unshift(proposal)
+  const list = await readProposals()
+  list.unshift(proposal)
+  await writeProposals(list)
   return proposal
 }
 
-export function setProposalStatus(id, status) {
-  const target = proposals.find((p) => p.id === id)
+export async function setProposalStatus(id, status) {
+  const list = await readProposals()
+  const target = list.find((p) => p.id === id)
   if (!target) return false
   target.status = status
+  await writeProposals(list)
   return true
 }
 

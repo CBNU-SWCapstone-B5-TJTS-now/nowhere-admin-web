@@ -1,4 +1,4 @@
-import { proposals, getPendingProposals, addProposal, formatProposedAgo, withCors } from '../../_lib/data.js'
+import { getAllProposals, getPendingProposals, addProposal, formatProposedAgo, withCors } from '../../_lib/data.js'
 
 function withComputedAgo(list) {
   return list.map((p) =>
@@ -6,7 +6,7 @@ function withComputedAgo(list) {
   )
 }
 
-export default function handler(req, res) {
+export default async function handler(req, res) {
   withCors(res)
   if (req.method === 'OPTIONS') {
     res.status(204).end()
@@ -15,7 +15,7 @@ export default function handler(req, res) {
 
   if (req.method === 'GET') {
     const status = req.query.status
-    const list = status === 'pending' ? getPendingProposals() : proposals
+    const list = status === 'pending' ? await getPendingProposals() : await getAllProposals()
     res.status(200).json(withComputedAgo(list))
     return
   }
@@ -33,7 +33,7 @@ export default function handler(req, res) {
       return
     }
 
-    const created = addProposal({
+    const created = await addProposal({
       placeName: placeName.trim(),
       category,
       description,

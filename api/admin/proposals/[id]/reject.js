@@ -1,6 +1,6 @@
 import { setProposalStatus, withCors } from '../../../_lib/data.js'
 
-export default function handler(req, res) {
+export default async function handler(req, res) {
   withCors(res)
   if (req.method === 'OPTIONS') {
     res.status(204).end()
@@ -12,7 +12,7 @@ export default function handler(req, res) {
   }
 
   const { id } = req.query
-  const ok = setProposalStatus(id, 'rejected')
+  const ok = await setProposalStatus(id, 'rejected')
   if (!ok) {
     res.status(404).json({ message: '해당 제안을 찾을 수 없어요.' })
     return
