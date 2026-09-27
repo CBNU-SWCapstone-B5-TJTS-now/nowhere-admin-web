@@ -10,15 +10,16 @@
 //
 // "최근 제보 내역"은 별도의 관리자 전용 엔드포인트 없이, 실제 백엔드가 이미 내려주는
 // /api/locations의 장소별 현재 혼잡도 스냅샷(congestionLevel, congestionUpdatedAt)을
-// 그대로 가져와서 최신순으로 ꠕ렬한 목록입니다. 개인정보(제보자 식별자 등)는 애초에
+// 그대로 가져와서 최신순으로 정렬한 목록입니다. 개인정보(제보자 식별자 등)는 애초에
 // 받지 않으므로 화면에도 표시하지 않습니다. 다만 이건 "장소별 가장 최근 상태" 한 줄일
 // 뿐, 하루 동안 들어온 모든 제보 하나하나의 이력은 아닙니다 — 그건 백엔드에 별도 조회
 // 엔드포인트가 있어야 가능합니다.
 //
 // 로컬 `npm run dev`(순수 Vite)에서는 Serverless Functions가 안 떠 있어서 localApiClient
-// 호출이 실패하는데, 그러면 아래 mock 데이터로 자동 대체돼요. 로컬에서도 실제로 함수가
+// 호출이 실패하는데, 그러면 아래 mock 데이터로 자동 대체돼요.
+//
 // 응답하는 걸 보고 싶으면 `vercel dev`로 실행하세요.
-// (콘솔에 [adminApi] ... mock 데이터로 대체 로그가 남으면 이 경로예요.)
+// (햸솔에 [adminApi] ... mock 데이터로 대체 로그가 남으면 이 경로예요.)
 
 import { apiClient, localApiClient, setStoredToken, clearStoredToken } from './client'
 import { demoAdminCredentials } from './config'
@@ -45,7 +46,21 @@ interface RawLocation {
   congestionUpdatedAt: string | null
 }
 
-const KNOWN_LEVELS: CongestionLevel[] = ['RELAXED', 'NORMAL', 'CROWDED']
+// 실제 백엔드가 내려주는 congestionLevel 원본 값은 'LOW' | 'MEDIUM' | 'HIGH'예요
+// (2026-09-27 실제 응답으로 확인: 예) "congestionLevel":"HIGH").
+// 화면(뱃지, 필터 등)은 'RELAXED' | 'NORMAL' | 'CROWDED'라는 우리 자체 표기를 쓰므로
+// 여기서 한 번 변환해줍니다. 백엔드가 다른 값을 내려주면(예상 밖 값) 매핑에 없으니
+// 안전하게 'UNKNOWN'으로 떨어집니다.
+const BACKEND_LEVEL_MAP: Record<string, CongestionLevel> = {
+  LOW: 'RELAXED',
+  MEDIUM: 'NORMAL',
+  HIGH: 'CROWDED',
+}
+
+function toAppLevel(rawLevel: string | null): CongestionLevel {
+  if (!rawLevel) return 'UNKNOWN'
+  return BACKEND_LEVEL_MAP[rawLevel] ?? 'UNKNOWN'
+}
 
 // 백엔드 카테고리 코드 -> 화면 표시용 한글 라벨. 여기 없는 값은 원본 그대로 보여줘요.
 const CATEGORY_LABELS: Record<string, string> = {
@@ -62,10 +77,7 @@ const LEVEL_OCCUPANCY_ESTIMATE: Record<CongestionLevel, number> = {
 }
 
 function toLocationStatus(raw: RawLocation): LocationStatus {
-  const level: CongestionLevel =
-    raw.congestionLevel && KNOWN_LEVELS.includes(raw.congestionLevel as CongestionLevel)
-      ? (raw.congestionLevel as CongestionLevel)
-      : 'UNKNOWN'
+  const level = toAppLevel(raw.congestionLevel)
 
   // congestionUpdatedAt이 없으면(아직 업데이트 이력 없음) -1을 넣어서
   // 화면에서 "업데이트 기록 없음"으로 구분해서 보여줘요.
@@ -163,9 +175,7 @@ export function getRecentReports(): Promise<RecentReport[]> {
 
     const withActiveReport = data.filter(
       (loc): loc is RawLocation & { congestionLevel: string; congestionUpdatedAt: string } =>
-        !!loc.congestionLevel &&
-        KNOWN_LEVELS.includes(loc.congestionLevel as CongestionLevel) &&
-        !!loc.congestionUpdatedAt
+        !!loc.congestionLevel && !!loc.congestionUpdatedAt && toAppLevel(loc.congestionLevel) !== 'UNKNOWN'
     )
 
     withActiveReport.sort((a, b) => b.congestionUpdatedAt.localeCompare(a.congestionUpdatedAt))
@@ -173,7 +183,7 @@ export function getRecentReports(): Promise<RecentReport[]> {
     return withActiveReport.map((loc) => ({
       id: String(loc.id),
       locationName: loc.name,
-      level: loc.congestionLevel as CongestionLevel,
+      level: toAppLevel(loc.congestionLevel),
       reportedAt: new Date(loc.congestionUpdatedAt).toLocaleTimeString('ko-KR', {
         hour: '2-digit',
         minute: '2-digit',
