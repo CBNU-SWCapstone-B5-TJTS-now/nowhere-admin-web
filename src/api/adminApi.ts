@@ -8,6 +8,13 @@
 //   도메인에서 자동으로 떠요. 나중에 실제 백엔드팀이 이 엔드포인트들을 정식으로 만들면,
 //   localApiClient를 apiClient로 바꿔주기만 하면 돼요.
 //
+// "최근 제보 내역"은 별도의 관리자 전용 엔드포인트 없이, 실제 백엔드가 이미 내려주는
+// /api/locations의 장소별 현재 혼잡도 스냅샷(congestionLevel, congestionUpdatedAt)을
+// 그대로 가져와서 최신순으로 ꠕ렬한 목록입니다. 개인정보(제보자 식별자 등)는 애초에
+// 받지 않으므로 화면에도 표시하지 않습니다. 다만 이건 "장소별 가장 최근 상태" 한 줄일
+// 뿐, 하루 동안 들어온 모든 제보 하나하나의 이력은 아닙니다 — 그건 백엔드에 별도 조회
+// 엔드포인트가 있어야 가능합니다.
+//
 // 로컬 `npm run dev`(순수 Vite)에서는 Serverless Functions가 안 떠 있어서 localApiClient
 // 호출이 실패하는데, 그러면 아래 mock 데이터로 자동 대체돼요. 로컬에서도 실제로 함수가
 // 응답하는 걸 보고 싶으면 `vercel dev`로 실행하세요.
@@ -18,18 +25,12 @@ import { demoAdminCredentials } from './config'
 import type {
   DashboardSummary,
   LocationStatus,
-  HourlyTrendPoint,
   LocationProposal,
   RecentReport,
   LoginResponse,
   CongestionLevel,
 } from '../types'
-import {
-  mockLocations,
-  mockHourlyTrend,
-  mockProposals,
-  mockRecentReports,
-} from './mockData'
+import { mockLocations, mockProposals } from './mockData'
 import { markMocked, markReal } from './mockStatus'
 
 // ---- /api/locations 실제 응답 어댑터 -----------------------------------
@@ -130,9 +131,8 @@ export function logout() {
   clearStoredToken()
 }
 
-// 대시보드 요약 통계는 더 이상 별도 API를 부르지 않고, 실제 백엔드 데이터(장소 목록)와
-// 아직 로컬 mock인 항목들(제안/제보)을 조합해서 만들어요. 그래서 "전체 등록 장소"/"실시간
-// 혼잡 장소"는 실제 서버 값과 항상 같아요.
+// 대시보드 요약 통계는 별도 API를 부르지 않고, 실제 백엔드 데이터(장소 목록 + 최근 제보)와
+// admin-web 자체 mock 서버(제안)를 조합해서 만들어요.
 export async function getSummary(): Promise<DashboardSummary> {
   const [locations, proposals, reports] = await Promise.all([
     getLocationStatuses(),
@@ -154,17 +154,40 @@ export function getLocationStatuses(): Promise<LocationStatus[]> {
   }, mockLocations)
 }
 
-export function getHourlyTrend(locationId?: string): Promise<HourlyTrendPoint[]> {
-  return withLocalMock('GET /api/admin/stats/hourly', async () => {
-    const { data } = await localApiClient.get<HourlyTrendPoint[]>('/api/admin/stats/hourly', {
-      params: locationId ? { locationId } : undefined,
-    })
-    return data
-  }, mockHourlyTrend)
+// "최근 제보 내역" — 별도의 관리자 전용 백엔드 엔드포인트 없이, 실제 백엔드의
+// /api/locations 스냅샷(장소별 현재 혼잡도 + 마지막 업데이트 시각)만으로 만든 목록입니다.
+// 제보자 식별자는 애초에 받지 않으므로 포함하지 않습니다.
+export function getRecentReports(): Promise<RecentReport[]> {
+  return withRealBackend('GET /api/locations (최근 제보용)', async () => {
+    const { data } = await apiClient.get<RawLocation[]>('/api/locations')
+
+    const withActiveReport = data.filter(
+      (loc): loc is RawLocation & { congestionLevel: string; congestionUpdatedAt: string } =>
+        !!loc.congestionLevel &&
+        KNOWN_LEVELS.includes(loc.congestionLevel as CongestionLevel) &&
+        !!loc.congestionUpdatedAt
+    )
+
+    withActiveReport.sort((a, b) => b.congestionUpdatedAt.localeCompare(a.congestionUpdatedAt))
+
+    return withActiveReport.map((loc) => ({
+      id: String(loc.id),
+      locationName: loc.name,
+      level: loc.congestionLevel as CongestionLevel,
+      reportedAt: new Date(loc.congestionUpdatedAt).toLocaleTimeString('ko-KR', {
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+      status: 'ACTIVE',
+    }))
+  }, [])
 }
 
-// ⚠️ 장소 제안(새 장소 등록 요청) 승인/반려는 요청에 따라 아직 실제 백엔드와 연결하지
-// 않고, 이 admin-web 레포 자체의 mock 서버(Vercel Serverless Functions)를 그대로 써요.
+// ⚠️ 장소 제안(새 장소 등록 요청)은 아직 실제 백엔드에는 없어서, 이 admin-web 레포
+// 자체의 서버리스 함수(Vercel Serverless Functions)를 그대로 써요. 모바일 앱이 직접
+// 이 함수로 제안을 전송하기 때문에, 여기서 보이는 값은 (mock이 아니라) 실제 사용자가
+// 제출한 제안입니다. 다만 서버리스 함수가 인메모리 저장소를 쓰기 때문에, 함수 인스턴스가
+// 재시작(콜드스타트)되면 목록이 초기화될 수 있습니다.
 export function getPendingProposals(): Promise<LocationProposal[]> {
   return withLocalMock('GET /api/admin/proposals?status=pending', async () => {
     const { data } = await localApiClient.get<LocationProposal[]>('/api/admin/proposals', {
@@ -180,13 +203,4 @@ export async function approveProposal(id: string): Promise<void> {
 
 export async function rejectProposal(id: string): Promise<void> {
   await localApiClient.post(`/api/admin/proposals/${id}/reject`)
-}
-
-export function getRecentReports(): Promise<RecentReport[]> {
-  return withLocalMock('GET /api/admin/reports/recent', async () => {
-    const { data } = await localApiClient.get<RecentReport[]>('/api/admin/reports/recent', {
-      params: { limit: 20 },
-    })
-    return data
-  }, mockRecentReports)
 }

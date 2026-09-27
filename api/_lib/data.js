@@ -4,6 +4,11 @@
 // 백엔드팀이 DB(PostgreSQL 등) 기반으로 정식 구현해야 합니다.
 // 주의: 이 파일은 nowhere-admin-web 레포 안에서만 쓰이고, 실제 백엔드 레포와는 무관해요.
 // (프로젝트 package.json이 "type": "module"이라 이 폴더 전체를 ESM으로 작성해요.)
+//
+// "최근 제보 내역"과 "시간대별 추이"는 더 이상 이 파일의 고정 mock 데이터를 쓰지 않아요.
+// 최근 제보 내역은 실제 백엔드의 /api/locations 스냅샷에서 바로 계산합니다
+// (src/api/adminApi.ts의 getRecentReports 참고). 시간대별 추이는 백엔드에 이력 조회
+// 엔드포인트가 없어서 정확하게 만들 수 없으므로 화면에서 아예 제거했어요.
 
 export const proposals = [
   {
@@ -30,28 +35,6 @@ export const proposals = [
     proposedAgo: '2일 전',
     status: 'pending',
   },
-]
-
-export const recentReports = [
-  { id: 'r1', locationName: '학생회관 학식당', reporterId: 'user_2841', level: 'CROWDED', reportedAt: '14:32', status: 'ACTIVE' },
-  { id: 'r2', locationName: '공학관 스터디카페', reporterId: 'user_1092', level: 'RELAXED', reportedAt: '14:28', status: 'ACTIVE' },
-  { id: 'r3', locationName: '중앙도서관 열람실', reporterId: 'user_3387', level: 'CROWDED', reportedAt: '14:20', status: 'EXPIRED' },
-  { id: 'r4', locationName: '체육관 헬스장', reporterId: 'user_0456', level: 'NORMAL', reportedAt: '14:15', status: 'ACTIVE' },
-  { id: 'r5', locationName: '학생회관 편의점 앞', reporterId: 'user_2210', level: 'RELAXED', reportedAt: '14:05', status: 'EXPIRED' },
-]
-
-export const hourlyTrend = [
-  { hour: 10, occupancyPercent: 22 },
-  { hour: 11, occupancyPercent: 18 },
-  { hour: 12, occupancyPercent: 74 },
-  { hour: 13, occupancyPercent: 96 },
-  { hour: 14, occupancyPercent: 60 },
-  { hour: 15, occupancyPercent: 28 },
-  { hour: 16, occupancyPercent: 12 },
-  { hour: 17, occupancyPercent: 34 },
-  { hour: 18, occupancyPercent: 88 },
-  { hour: 19, occupancyPercent: 70 },
-  { hour: 20, occupancyPercent: 30 },
 ]
 
 export function getPendingProposals() {
@@ -98,15 +81,6 @@ export function setProposalStatus(id, status) {
   if (!target) return false
   target.status = status
   return true
-}
-
-export function getSummary() {
-  return {
-    totalLocations: 24,
-    crowdedLocations: 2,
-    reportsToday: recentReports.length,
-    pendingProposals: getPendingProposals().length,
-  }
 }
 
 export function withCors(res) {

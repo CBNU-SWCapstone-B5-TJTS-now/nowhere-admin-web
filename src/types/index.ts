@@ -26,11 +26,6 @@ export interface DashboardSummary {
   pendingProposals: number
 }
 
-export interface HourlyTrendPoint {
-  hour: number
-  occupancyPercent: number
-}
-
 export interface LocationProposal {
   id: string
   placeName: string
@@ -44,10 +39,12 @@ export interface LocationProposal {
   createdAt?: string
 }
 
+// "최근 제보 내역"은 실제 백엔드 /api/locations의 장소별 현재 혼잡도 스냅샷을
+// 그대로 가져온 것입니다. 제보자 식별자는 개인정보 보호를 싄면이 애초에 받지 않으므로
+// 이 타입에도 포함하지 않습니다.
 export interface RecentReport {
   id: string
   locationName: string
-  reporterId: string
   level: CongestionLevel
   reportedAt: string
   status: 'ACTIVE' | 'EXPIRED'

@@ -9,10 +9,9 @@ const levelBadge: Record<CongestionLevel, { bg: string; text: string; label: str
 }
 
 function toCsv(reports: RecentReport[]): string {
-  const header = ['장소', '제보자', '혼잡도', '제보시각', '상태']
+  const header = ['장소', '혼잡도', '제보시각', '상태']
   const rows = reports.map((r) => [
     r.locationName,
-    r.reporterId,
     levelBadge[r.level].label,
     r.reportedAt,
     r.status === 'ACTIVE' ? '정상' : '만료(TTL)',
@@ -50,7 +49,6 @@ export function ReportsTable({ reports }: { reports: RecentReport[] }) {
         <thead>
           <tr className="border-b border-slate-200">
             <th className="text-left py-2 px-1.5 text-[11.5px] font-bold text-slate-400">장소</th>
-            <th className="text-left py-2 px-1.5 text-[11.5px] font-bold text-slate-400">제보자</th>
             <th className="text-left py-2 px-1.5 text-[11.5px] font-bold text-slate-400">혼잡도</th>
             <th className="text-left py-2 px-1.5 text-[11.5px] font-bold text-slate-400">제보 시각</th>
             <th className="text-right py-2 px-1.5 text-[11.5px] font-bold text-slate-400">상태</th>
@@ -62,7 +60,6 @@ export function ReportsTable({ reports }: { reports: RecentReport[] }) {
             return (
               <tr key={r.id} className={i !== reports.length - 1 ? 'border-b border-slate-100' : ''}>
                 <td className="py-2.5 px-1.5 text-[13px] font-semibold text-slate-900">{r.locationName}</td>
-                <td className="py-2.5 px-1.5 text-[12.5px] text-slate-500">{r.reporterId}</td>
                 <td className="py-2.5 px-1.5">
                   <span className={`text-[11.5px] font-bold px-2.5 py-0.5 rounded-full ${badge.bg} ${badge.text}`}>
                     {badge.label}
