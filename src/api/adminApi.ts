@@ -62,6 +62,18 @@ function toAppLevel(rawLevel: string | null): CongestionLevel {
   return BACKEND_LEVEL_MAP[rawLevel] ?? 'UNKNOWN'
 }
 
+// 백엔드가 congestionUpdatedAt을 타임존 표시 없이(하지만 실제로는 UTC 기준으로) 내려줘요.
+// 예) "2026-09-27T08:40:52.231713197" — 끝에 'Z'나 '+09:00' 같은 표시가 없어요.
+// 그런데 자바스크립트의 new Date(...)는 타임존 표시가 없는 날짜/시간 문자열을
+// "로컬 시간(브라우저 기준, 한국이면 KST)"으로 해석해버려서(ECMA-262 스펙),
+// 실제로는 UTC 08:40인데 한국시간 08:40으로 잘못 해석 -> 실제 시각보다 9시간 늦게
+// 계산되는 버그가 있었습니다(2026-09-27 실사용 중 발견). 타임존 표시가 없으면
+// 'Z'를 붙여서 이 값이 UTC라는 걸 명시적으로 알려줍니다.
+function parseBackendTimestamp(raw: string): Date {
+  const hasTimezone = /Z$|[+-]\d{2}:?\d{2}$/.test(raw)
+  return new Date(hasTimezone ? raw : `${raw}Z`)
+}
+
 // 백엔드 카테고리 코드 -> 화면 표시용 한글 라벨. 여기 없는 값은 원본 그대로 보여줘요.
 const CATEGORY_LABELS: Record<string, string> = {
   SCHOOL: '학교 시설',
@@ -82,7 +94,7 @@ function toLocationStatus(raw: RawLocation): LocationStatus {
   // congestionUpdatedAt이 없으면(아직 업데이트 이력 없음) -1을 넣어서
   // 화면에서 "업데이트 기록 없음"으로 구분해서 보여줘요.
   const updatedAgoMinutes = raw.congestionUpdatedAt
-    ? Math.max(0, Math.round((Date.now() - new Date(raw.congestionUpdatedAt).getTime()) / 60000))
+    ? Math.max(0, Math.round((Date.now() - parseBackendTimestamp(raw.congestionUpdatedAt).getTime()) / 60000))
     : -1
 
   return {
@@ -184,7 +196,7 @@ export function getRecentReports(): Promise<RecentReport[]> {
       id: String(loc.id),
       locationName: loc.name,
       level: toAppLevel(loc.congestionLevel),
-      reportedAt: new Date(loc.congestionUpdatedAt).toLocaleTimeString('ko-KR', {
+      reportedAt: parseBackendTimestamp(loc.congestionUpdatedAt).toLocaleTimeString('ko-KR', {
         hour: '2-digit',
         minute: '2-digit',
       }),
