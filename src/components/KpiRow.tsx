@@ -34,7 +34,7 @@ export function KpiRow({ summary, crowdedNames }: KpiRowProps) {
         label="오늘 누적 제보"
         value={String(summary.reportsToday)}
         unit="건"
-        note="예시 데이터 (백엔드 미연동)"
+        note="실시간 서버 데이터"
         noteColor="text-slate-400"
         iconBg="bg-blue-50"
         icon={<ListIcon className="text-blue-600" />}
